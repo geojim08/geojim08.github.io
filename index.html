@@ -1,7 +1,283 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="viewport" content="user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, height=device-height, target-densitydpi=device-dpi" />
+    <link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css" />
+    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+    <script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+    
+    <script src="js/data.js"></script>
+    
+    <script type="text/javascript">
+
+        function onError(e){
+            alert("Code d'erreur BD : " + e.code);
+        }
+    
+        // Teste si le navigateur supporte le WebSQL
+        if (window.openDatabase) {
+            //Create the database the parameters are 1. the database name 2.version number 3. a description 4. the size of the database (in bytes) 1024 x 1024 = 1MB
+            var mydb = openDatabase("recette_db_v7", "0.1", "A Database of recette", 2 * 1024 * 1024);
+
+            // Crée les tables pour les recette, et les ingrédients
+            mydb.transaction(function (t) {
+                t.executeSql("CREATE TABLE rec_recette (id INTEGER PRIMARY KEY, rec_nom TEXT)");
+                t.executeSql("CREATE TABLE recette_ingredient (id_recette INTEGER, id_ingredient INTEGER,  PRIMARY KEY ('id_recette','id_ingredient'))");
+                t.executeSql("CREATE TABLE ing_ingredient (id INTEGER PRIMARY KEY, ing_nom TEXT)");
+
+            });
+
+            ChargerBD();
+
+        } else {
+            alert("WebSQL is not supported by your browser!");
+
+        }
+
+        function ChargerBD() {
+            // Charge le fichier data.js dans la BD WebSQL
+            mydb.transaction(function (t) {
+                for (var i = table_recette.length - 1; i >= 0; i--) {
+                    t.executeSql("INSERT INTO rec_recette VALUES (?,?)", [table_recette[i].id, table_recette[i].nom]);
+
+                };
+
+            });
+
+            mydb.transaction(function (t) {
+                for (var i = table_recette_ing.length - 1; i >= 0; i--) {
+                    t.executeSql("INSERT INTO recette_ingredient VALUES (?,?)", [table_recette_ing[i].id_recette, table_recette_ing[i].id_ingredient]);
+
+                };
+
+            });
+
+             mydb.transaction(function (t) {
+                for (var i = table_ingredient.length - 1; i >= 0; i--) {
+                    t.executeSql("INSERT INTO ing_ingredient VALUES (?,?)", [table_ingredient[i].id_ing, table_ingredient[i].nom]);
+
+                };
+
+            });
+
+        }
+
+        $(document).on("pagecreate","#pageListeRecette",function(){
+            AfficherRecette();
+
+        });
+
+        function AjouterRecette() {
+        //check to ensure the mydb object has been created
+            if (mydb) {
+                //get the values of the make and model text inputs
+                var recette = document.getElementById("tbxRecette").value;
+
+                //Test to ensure that the user has entered both a make and model
+                if (recette !== "") {
+                    //Insert the user entered details into the cars table, note the use of the ? placeholder, these will replaced by the data passed in as an array as the second parameter
+                    mydb.transaction(function (t) {
+                        t.executeSql("INSERT INTO rec_recette (rec_nom) VALUES (?)", [recette]);
+                        AfficherRecette();
+
+                    });
+
+                }
+                else
+                {
+                    alert("You must enter a make and model!");
+
+                }
+
+            } else {
+                alert("db not found, your browser does not support web sql!");
+
+            }
+
+        }
+
+        function AfficherRecette() {
+            //check to ensure the mydb object has been created
+            if (mydb) {
+                //Get all the cars from the database with a select statement, set outputCarList as the callback function for the executeSql command
+                mydb.transaction(function (t) {
+                    t.executeSql("SELECT * FROM rec_recette", [], ActualiseListe);
+
+                });
+
+            }
+            else
+            {
+                alert("db not found, your browser does not support web sql!");
+
+            }
+        }
+
+        function ActualiseListe(transaction, results) {
+            
+            // Crée la liste de checkbox de recettes
+            $("#contentPageListe").append('<form><fieldset id="cbFieldSet" data-role="controlgroup">');
+
+            var i;
+            //Iterate through the results
+            for (i = 0; i < results.rows.length; i++) {
+                //Get the current row
+                var row = results.rows.item(i);
+                var idCbxRecette = '"cbxRecette' + row.id + '"';
+                $("#cbFieldSet").append('<input type="checkbox" name=' + idCbxRecette + 'id=' + idCbxRecette + 'value=' + row.id + '><label for=' + idCbxRecette + '>' + row.rec_nom + '</label>');
+
+            }
+            
+            $("#contentPageListe").trigger("create")
+
+        }
+
+        $(document).on("pagebeforeshow", "#pageIngredients", function (event) {
+            //get from data - you put this here when the "a" wa clicked in the previous page
+            var info = $(this).data("ids_recette");
+
+            //$("#listeIngredientsRecette").empty();
+            $("#cbFieldIng").empty();
+            // Crée la liste de checkbox de recettes
+            //$("#contentListeIngredients").append('<form><fieldset id="cbFieldIng" data-role="controlgroup">');
+
+            mydb.transaction(function (t) {
+                    t.executeSql("SELECT * FROM ing_ingredient i, recette_ingredient r WHERE r.id_ingredient = i.id AND r.id_recette in (" + info + ")", [], function (t, data) {
+                        for(var i = 0; i < data.rows.length; i++){ 
+                            var row = data.rows.item(i);
+                            //$("#listeIngredientsRecette").append('<li><a href="#">' + row.ing_nom + "</a></li>");
+                            var idCbxIngredient = '"cbxIngredient' + row.id + '"';
+                            $("#cbFieldIng").append('<input type="checkbox" name=' + idCbxIngredient + 'id=' + idCbxIngredient + 'value=' + row.id + '><label for=' + idCbxIngredient + '>' + row.ing_nom + '</label>');
+
+                        }
+                    }, onError);
+                });
+            //$("#contentListeIngredients").append('</fieldset></form>');
+
+            //$('#listeIngredientsRecette').listview('refresh');
+            $("#cbFieldIng").enhanceWithin();
+
+        });
+
+        function showSelectedNames(pFieldSet){
+            
+            var optionFieldSet = '';
+
+            if (pFieldSet == "#cbFieldSet") 
+            {
+                optionFieldSet = " input:checked";
+            }
+            else if (pFieldSet == "#cbFieldIng")
+            {
+                optionFieldSet = " input:not(:checked)";
+            }
+
+            var count = $(pFieldSet + optionFieldSet).length;
+            var str = '';
+
+
+            for(i=0;i<count;i++){
+                str += $(pFieldSet + optionFieldSet)[i].value + ',';
+            }
+            str = str.substring(0, str.length - 1);
+
+            if (pFieldSet == "#cbFieldSet") 
+            {
+                $("#pageIngredients").data("ids_recette", str);
+                $.mobile.pageContainer.pagecontainer("change", "#pageIngredients");
+            }
+            else if (pFieldSet == "#cbFieldIng")
+            {
+                $("#pageListeEpicerie").data("ids_ingredient", str);
+                $.mobile.pageContainer.pagecontainer("change", "#pageListeEpicerie");
+
+            };
+            
+        }
+
+        $(document).on("pagebeforeshow", "#pageListeEpicerie", function (event) {
+            //get from data - you put this here when the "a" wa clicked in the previous page
+            var info = $(this).data("ids_ingredient");
+
+            //$("#listeIngredientsRecette").empty();
+            $("#contentListeEpicerie").empty();
+            // Crée la liste de checkbox de recettes
+            $("#contentListeEpicerie").append('<form><fieldset id="cbFieldIngEpicerie" data-role="controlgroup">');
+
+            mydb.transaction(function (t) {
+                    t.executeSql("SELECT * FROM ing_ingredient WHERE id in (" + info + ")", [], function (t, data) {
+                        for(var i = 0; i < data.rows.length; i++){ 
+                            var row = data.rows.item(i);
+                            var idCbxIngredientEpicerie = '"cbxIngredientEpicerie' + row.id + '"';
+                            $("#contentListeEpicerie").append('<input type="checkbox" name=' + idCbxIngredientEpicerie + 'id=' + idCbxIngredientEpicerie + 'value=' + row.id + '><label for=' + idCbxIngredientEpicerie + '>' + row.ing_nom + '</label>');
+
+                        }
+                    }, onError);
+                });
+
+            $("#contentListeEpicerie").enhanceWithin();
+
+        });
+
+    </script>
+    <title>Page Title</title>
+</head>
+
 <body>
-<h1>Hello World</h1>
-<p>I'm hosted with GitHub Pages.</p>
+    <div data-role="page" id="pageListeRecette">
+    <!-- Page principale de listes de recette -->
+        <div data-role="header">
+            <h1>Maxi Épicerie</h1>
+        </div><!-- /header -->
+        <div role="main" class="ui-content" id="contentPageListe">
+        </div>
+        <a class="ui-btn ui-corner-all"  onclick="showSelectedNames('#cbFieldSet')">Lister les ingrédients</a>
+        <!-- /content -->
+        <div data-role="footer">
+            <div id="deviceready" class="blink">
+                <p class="event listening">Connecting to Device</p>
+                <p class="event received">Device is Ready</p>
+            </div>
+        </div><!-- /footer -->
+    </div><!-- /page -->
+
+    <div data-role="page" id="pageIngredients">
+    <!-- Page qui liste les ingrédients des recettes -->
+        <div data-role="header">
+            <h1>Ingrédients</h1>
+        </div><!-- /header -->
+
+        <div role="main" class="ui-content" id="contentListeIngredients">
+            <div data-role="fieldcontain">
+                <form>
+                    <fieldset id="cbFieldIng" data-role="controlgroup">
+                    </fieldset>
+                </form>
+            </div>
+        </div><!-- /content -->
+        <div data-role="footer">
+            <a href="#" class="ui-btn" onclick="showSelectedNames('#cbFieldIng')">Aller à l'épicerie</a>
+        </div><!-- /footer -->
+    </div><!-- /page -->
+
+    <div data-role="page" id="pageListeEpicerie">
+    <!-- Page qui liste les ingrédients de l'épicerie -->
+        <div data-role="header">
+            <h1>Liste d'épicerie</h1>
+        </div><!-- /header -->
+
+        <div role="main" class="ui-content" id="contentListeEpicerie">
+
+        </div><!-- /content -->
+        <div data-role="footer">
+            
+        </div><!-- /footer -->
+    </div><!-- /page -->
+
+    <!-- <script type="text/javascript" src="cordova.js"></script>
+    <script type="text/javascript" src="js/index.js"></script>
+    <script type="text/javascript">app.initialize();</script> -->
 </body>
 </html>
